@@ -1,6 +1,17 @@
 import { chromium, type Browser, type Page } from 'playwright';
 
-const NAVER_MOBILE_REVIEW_BASE_URL = 'https://m.place.naver.com/restaurant';
+const NAVER_MOBILE_PLACE_ORIGIN = 'https://m.place.naver.com';
+
+const NAVER_PLACE_CANDIDATE_TYPES = [
+  'place',
+  'hospital',
+  'restaurant',
+  'hairshop',
+  'nailshop',
+  'accommodation',
+  'pharmacy',
+] as const;
+
 const DEFAULT_MAX_REVIEWS = 100;
 const MAX_REVIEW_LIMIT = 100;
 const MAX_NAVIGATION_RETRIES = 5;
@@ -8,6 +19,8 @@ const MAX_STAGNANT_SCROLLS = 4;
 
 const MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+type NaverPlaceCandidateType = (typeof NAVER_PLACE_CANDIDATE_TYPES)[number];
 
 export type ReviewCollectionProgress = {
   collectedReviewCount: number;
@@ -35,7 +48,13 @@ export type ReviewCollectionResult = {
 
 type NormalizedPlaceInput = {
   placeId: string;
-  url: string;
+  requestedUrl: string;
+  candidateUrls: string[];
+};
+
+type ResolvedReviewPage = {
+  requestedUrl: string;
+  navigationAttempts: number;
 };
 
 export function normalizeMaxReviews(value?: number): number {
@@ -56,9 +75,12 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
   }
 
   if (/^\d+$/.test(trimmed)) {
+    const candidateUrls = buildCandidateReviewUrls(trimmed);
+
     return {
       placeId: trimmed,
-      url: `${NAVER_MOBILE_REVIEW_BASE_URL}/${trimmed}/review/visitor`,
+      requestedUrl: candidateUrls[0],
+      candidateUrls,
     };
   }
 
@@ -72,26 +94,50 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
     );
   }
 
-  const placeIdMatch = parsedUrl.pathname.match(
-    /\/(?:restaurant|place|hospital|hairshop|accommodation|attraction|beauty|mart|cafe|store)?\/?(\d+)(?:\/|$)/,
-  );
+  const placeIdMatch = parsedUrl.pathname.match(/\/(\d+)(?:\/|$)/);
 
   if (!placeIdMatch?.[1]) {
     throw new Error('입력한 URL에서 네이버 플레이스 ID를 찾지 못했습니다.');
   }
 
+  const placeId = placeIdMatch[1];
   const url = new URL(parsedUrl.toString());
 
   if (!url.pathname.includes('/review/visitor')) {
-    const category = url.pathname.split('/').filter(Boolean)[0] || 'restaurant';
-    url.pathname = `/${category}/${placeIdMatch[1]}/review/visitor`;
-    url.search = '';
+    const category = url.pathname.split('/').filter(Boolean)[0] || 'place';
+    url.pathname = `/${category}/${placeId}/review/visitor`;
   }
 
+  url.search = '';
+
+  const requestedUrl = url.toString();
+
   return {
-    placeId: placeIdMatch[1],
-    url: url.toString(),
+    placeId,
+    requestedUrl,
+    candidateUrls: buildCandidateReviewUrls(placeId, requestedUrl),
   };
+}
+
+function buildNaverPlaceReviewUrl(
+  type: NaverPlaceCandidateType,
+  placeId: string,
+): string {
+  return `${NAVER_MOBILE_PLACE_ORIGIN}/${type}/${placeId}/review/visitor`;
+}
+
+function buildCandidateReviewUrls(
+  placeId: string,
+  firstUrl?: string,
+): string[] {
+  const urls = [
+    firstUrl,
+    ...NAVER_PLACE_CANDIDATE_TYPES.map((type) =>
+      buildNaverPlaceReviewUrl(type, placeId),
+    ),
+  ].filter((url): url is string => Boolean(url));
+
+  return Array.from(new Set(urls));
 }
 
 export async function collectNaverPlaceReviews({
@@ -147,9 +193,9 @@ export async function collectNaverPlaceReviews({
       phase: 'navigating',
     });
 
-    const navigationAttempts = await gotoReviewPageWithRetry(
+    const resolvedReviewPage = await resolveReviewPageUrl(
       page,
-      normalizedInput.url,
+      normalizedInput.candidateUrls,
     );
     const reviews = await collectReviewsFromLoadedPage(
       page,
@@ -167,17 +213,53 @@ export async function collectNaverPlaceReviews({
 
     return {
       placeId: normalizedInput.placeId,
-      requestedUrl: normalizedInput.url,
+      requestedUrl: resolvedReviewPage.requestedUrl,
       finalUrl: page.url(),
       maxReviews: reviewLimit,
       reviews,
       loadedReviewItemCount,
-      navigationAttempts,
+      navigationAttempts: resolvedReviewPage.navigationAttempts,
       reachedMax: reviews.length >= reviewLimit,
     };
   } finally {
     await browser?.close();
   }
+}
+
+async function resolveReviewPageUrl(
+  page: Page,
+  candidateUrls: string[],
+): Promise<ResolvedReviewPage> {
+  let totalNavigationAttempts = 0;
+  let lastError: unknown;
+
+  for (const candidateUrl of candidateUrls) {
+    let navigationAttempts = 0;
+
+    try {
+      navigationAttempts = await gotoReviewPageWithRetry(page, candidateUrl);
+      totalNavigationAttempts += navigationAttempts;
+
+      await waitForReviewSection(page);
+
+      return {
+        requestedUrl: candidateUrl,
+        navigationAttempts: totalNavigationAttempts,
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (navigationAttempts === 0) {
+        totalNavigationAttempts += MAX_NAVIGATION_RETRIES;
+      }
+    }
+  }
+
+  throw new Error(
+    `네이버 플레이스 리뷰 페이지를 찾지 못했습니다. place, restaurant, hospital 등 후보 URL을 모두 시도했지만 실패했습니다.${
+      lastError instanceof Error ? ` (${lastError.message})` : ''
+    }`,
+  );
 }
 
 async function gotoReviewPageWithRetry(
