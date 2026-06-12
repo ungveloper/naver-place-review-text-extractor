@@ -2,10 +2,12 @@
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  DEFAULT_MAX_REVIEWS,
+  MAX_REVIEW_LIMIT,
+  normalizeMaxReviews,
+} from '@/lib/review-config';
 import { useMemo, useState } from 'react';
-
-const DEFAULT_MAX_REVIEWS = 100;
-const MAX_REVIEW_LIMIT = 100;
 
 type ReviewApiResult = {
   placeId: string;
@@ -48,10 +50,7 @@ export default function Page() {
   );
 
   const handleExtract = async () => {
-    const normalizedMaxReviews = Math.min(
-      Math.max(Math.floor(maxReviews || DEFAULT_MAX_REVIEWS), 1),
-      MAX_REVIEW_LIMIT,
-    );
+    const normalizedMaxReviews = normalizeMaxReviews(maxReviews);
 
     setIsLoading(true);
     setErrorMessage('');
@@ -183,7 +182,7 @@ export default function Page() {
           <code className="mx-1 rounded bg-muted px-1 py-0.5">
             div.place_section_content
           </code>
-          영역의 방문자 텍스트 리뷰를 최대 100개까지 수집합니다.
+          영역의 방문자 텍스트 리뷰를 최대 {MAX_REVIEW_LIMIT}개까지 수집합니다.
         </p>
       </div>
 

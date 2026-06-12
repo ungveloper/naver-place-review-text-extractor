@@ -1,3 +1,4 @@
+import { normalizeMaxReviews } from '@/lib/review-config';
 import { chromium, type Browser, type Page } from 'playwright';
 
 const NAVER_MOBILE_PLACE_ORIGIN = 'https://m.place.naver.com';
@@ -12,8 +13,6 @@ const NAVER_PLACE_CANDIDATE_TYPES = [
   'pharmacy',
 ] as const;
 
-const DEFAULT_MAX_REVIEWS = 100;
-const MAX_REVIEW_LIMIT = 100;
 const MAX_NAVIGATION_RETRIES = 5;
 const MAX_STAGNANT_SCROLLS = 4;
 
@@ -56,16 +55,6 @@ type ResolvedReviewPage = {
   requestedUrl: string;
   navigationAttempts: number;
 };
-
-export function normalizeMaxReviews(value?: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_MAX_REVIEWS;
-
-  const normalized = Math.floor(Number(value));
-
-  if (normalized < 1) return DEFAULT_MAX_REVIEWS;
-
-  return Math.min(normalized, MAX_REVIEW_LIMIT);
-}
 
 export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
   const trimmed = placeInput.trim();
