@@ -4,59 +4,143 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useMemo, useState } from 'react';
 
-function extractReviewTexts(html: string): string[] {
-  if (!html.trim()) return [];
+const DEFAULT_MAX_REVIEWS = 100;
+const MAX_REVIEW_LIMIT = 100;
 
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+type ReviewApiResult = {
+  placeId: string;
+  requestedUrl: string;
+  finalUrl: string;
+  maxReviews: number;
+  reviews: string[];
+  loadedReviewItemCount: number;
+  navigationAttempts: number;
+  reachedMax: boolean;
+};
 
-  const reviewItems = Array.from(doc.querySelectorAll('#_review_list > li'));
+type ReviewProgress = {
+  collectedReviewCount: number;
+  totalReviewCount: number;
+  loadedReviewItemCount: number;
+  phase: string;
+};
 
-  const reviews = reviewItems
-    .map((li) => {
-      const reviewNode =
-        li.querySelector('.pui__vn15t2 a[data-pui-click-code="rvshowmore"]') ||
-        li.querySelector('.pui__vn15t2 a') ||
-        li.querySelector('.pui__vn15t2');
-
-      if (!reviewNode) return '';
-
-      return (reviewNode.textContent || '').replace(/\s+/g, ' ').trim();
-    })
-    .filter(Boolean);
-
-  return reviews;
-}
+type ReviewStreamEvent =
+  | { type: 'progress'; progress: ReviewProgress }
+  | { type: 'done'; result: ReviewApiResult }
+  | { type: 'error'; message: string };
 
 export default function Page() {
-  const [html, setHtml] = useState('');
-  const [reviews, setReviews] = useState<string[]>([]);
+  const [placeInput, setPlaceInput] = useState('2070415865');
+  const [maxReviews, setMaxReviews] = useState(DEFAULT_MAX_REVIEWS);
+  const [result, setResult] = useState<ReviewApiResult | null>(null);
+  const [progress, setProgress] = useState<ReviewProgress | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const previewCount = useMemo(() => reviews.length, [reviews]);
+  const reviews = useMemo(() => result?.reviews ?? [], [result]);
 
-  const copyText = useMemo(() => {
-    return reviews.map((review) => `- ${review}`).join('\n');
-  }, [reviews]);
+  const outputText = useMemo(
+    () =>
+      reviews.map((review, index) => `${index + 1}.\n${review}`).join('\n\n'),
+    [reviews],
+  );
 
-  const handleExtract = () => {
+  const handleExtract = async () => {
+    const normalizedMaxReviews = Math.min(
+      Math.max(Math.floor(maxReviews || DEFAULT_MAX_REVIEWS), 1),
+      MAX_REVIEW_LIMIT,
+    );
+
+    setIsLoading(true);
+    setErrorMessage('');
+    setCopied(false);
+    setResult(null);
+    setProgress({
+      collectedReviewCount: 0,
+      totalReviewCount: normalizedMaxReviews,
+      loadedReviewItemCount: 0,
+      phase: 'initializing',
+    });
+
     try {
-      const parsed = extractReviewTexts(html);
-      setReviews(parsed);
-      setCopied(false);
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          placeInput,
+          maxReviews: normalizedMaxReviews,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || '리뷰 수집에 실패했습니다.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResult: ReviewApiResult | null = null;
+
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          const event = JSON.parse(line) as ReviewStreamEvent;
+
+          if (event.type === 'progress') {
+            setProgress(event.progress);
+          }
+
+          if (event.type === 'done') {
+            finalResult = event.result;
+            setResult(event.result);
+            setProgress({
+              collectedReviewCount: event.result.reviews.length,
+              totalReviewCount: event.result.maxReviews,
+              loadedReviewItemCount: event.result.loadedReviewItemCount,
+              phase: 'done',
+            });
+          }
+
+          if (event.type === 'error') {
+            throw new Error(event.message || '리뷰 수집에 실패했습니다.');
+          }
+        }
+      }
+
+      if (!finalResult) {
+        throw new Error('리뷰 수집 결과를 받지 못했습니다.');
+      }
     } catch (error) {
       console.error(error);
-      setReviews([]);
-      setCopied(false);
-      alert('HTML 파싱 중 오류가 발생했습니다.');
+      setResult(null);
+      setProgress(null);
+      setErrorMessage(
+        error instanceof Error ? error.message : '리뷰 수집에 실패했습니다.',
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleCopy = async () => {
-    if (!copyText) return;
+    if (!outputText) return;
 
     try {
-      await navigator.clipboard.writeText(copyText);
+      await navigator.clipboard.writeText(outputText);
       setCopied(true);
 
       setTimeout(() => {
@@ -68,55 +152,135 @@ export default function Page() {
     }
   };
 
+  const handleDownloadTxt = () => {
+    if (!outputText) return;
+
+    const blob = new Blob([outputText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const safePlaceId =
+      (result?.placeId ??
+        placeInput.replace(/[^\dA-Za-z가-힣_-]/g, '').slice(0, 32)) ||
+      'naver-place';
+
+    anchor.href = url;
+    anchor.download = `naver-place-reviews-${safePlaceId}-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <main className="mx-auto px-6 py-10 max-w-2xl w-full min-h-screen flex flex-col gap-6">
+    <main className="mx-auto px-6 py-10 max-w-3xl w-full min-h-screen flex flex-col gap-6">
       <div className="space-y-2">
-        <h1 className="font-bold text-2xl">네이버 리뷰 HTML 파서</h1>
-        <p className="text-muted-foreground text-sm">
-          `#_review_list` 안의 각 `li`에서 리뷰 내용만 추출합니다.
+        <h1 className="font-bold text-2xl">
+          네이버 플레이스 방문자 리뷰 수집기
+        </h1>
+        <p className="text-muted-foreground text-sm leading-6">
+          네이버 모바일 플레이스 리뷰 URL 또는 숫자 ID만 입력하면 Playwright가
+          모바일 리뷰 페이지에 접속해
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">
+            div.place_section_content
+          </code>
+          영역의 방문자 텍스트 리뷰를 최대 100개까지 수집합니다.
         </p>
       </div>
 
-      <Textarea
-        value={html}
-        onChange={(e) => setHtml(e.target.value)}
-        placeholder='여기에 "<ul id="_review_list"> ... </ul>" HTML을 붙여넣으세요.'
-        className="h-52"
-      />
+      <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+        <label className="block space-y-2">
+          <span className="font-medium text-sm">
+            네이버 플레이스 ID 또는 리뷰 URL
+          </span>
+          <input
+            value={placeInput}
+            onChange={(event) => setPlaceInput(event.target.value)}
+            placeholder="2070415865 또는 https://m.place.naver.com/restaurant/2070415865/review/visitor"
+            className="w-full rounded-2xl border border-transparent bg-white px-3 py-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/30"
+          />
+        </label>
 
-      <div className="flex gap-2">
-        <Button onClick={handleExtract} className="w-fit">
-          리뷰 추출하기
-        </Button>
+        <label className="block w-40 space-y-2">
+          <span className="font-medium text-sm">최대 리뷰 수</span>
+          <input
+            type="number"
+            min={1}
+            max={MAX_REVIEW_LIMIT}
+            value={maxReviews}
+            onChange={(event) => setMaxReviews(Number(event.target.value))}
+            className="w-full rounded-2xl border border-transparent bg-white px-3 py-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/30"
+          />
+        </label>
 
-        <Button
-          onClick={handleCopy}
-          variant="outline"
-          className="w-fit"
-          disabled={reviews.length === 0}
-        >
-          {copied ? '복사 완료!' : '복사하기'}
-        </Button>
-      </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleExtract}
+            className="w-fit"
+            disabled={isLoading}
+          >
+            {isLoading ? '수집 중...' : '리뷰 수집하기'}
+          </Button>
 
-      <section className="p-3 h-52 space-y-3 rounded-2xl border border-gray-100 bg-gray-50 overflow-y-scroll">
-        <h2 className="font-semibold text-lg">
-          추출 결과 {previewCount > 0 ? `(${previewCount}개)` : ''}
-        </h2>
+          <Button
+            onClick={handleCopy}
+            variant="outline"
+            className="w-fit"
+            disabled={reviews.length === 0 || isLoading}
+          >
+            {copied ? '복사 완료!' : '결과 복사하기'}
+          </Button>
 
-        {reviews.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            아직 추출된 리뷰가 없습니다.
+          <Button
+            onClick={handleDownloadTxt}
+            variant="outline"
+            className="w-fit"
+            disabled={reviews.length === 0 || isLoading}
+          >
+            txt 파일로 내보내기
+          </Button>
+        </div>
+
+        {progress ? (
+          <p className="text-muted-foreground text-sm leading-6">
+            총 {progress.totalReviewCount}개 중 현재{' '}
+            {progress.collectedReviewCount}개 수집
+            {isLoading ? ' 중' : ' 완료'} · 로드된 리뷰 아이템{' '}
+            {progress.loadedReviewItemCount}개
           </p>
-        ) : (
-          <ul className="pl-5 space-y-2 list-disc">
-            {reviews.map((review, index) => (
-              <li key={`${index}-${review.slice(0, 20)}`} className="leading-7">
-                {review}
-              </li>
-            ))}
-          </ul>
-        )}
+        ) : null}
+      </section>
+
+      {errorMessage ? (
+        <p className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm leading-6 text-red-700">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <section className="space-y-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+        <div className="space-y-1">
+          <h2 className="font-semibold text-lg">
+            추출 결과 {reviews.length > 0 ? `(${reviews.length}개)` : ''}
+          </h2>
+          {result ? (
+            <p className="text-muted-foreground text-xs leading-5">
+              요청 ID: {result.placeId} · 총 {result.maxReviews}개 중{' '}
+              {reviews.length}개 수집 · 로드된 리뷰 아이템:{' '}
+              {result.loadedReviewItemCount}개 · 새로고침 시도:{' '}
+              {result.navigationAttempts}회 · 최종 URL: {result.finalUrl}
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              아직 추출된 리뷰가 없습니다.
+            </p>
+          )}
+        </div>
+
+        <Textarea
+          value={outputText}
+          readOnly
+          placeholder="수집된 리뷰 텍스트가 여기에 표시됩니다."
+          className="min-h-72 whitespace-pre-line bg-white"
+        />
       </section>
     </main>
   );
