@@ -174,7 +174,7 @@ export default function Page() {
     <main className="mx-auto px-6 py-10 max-w-3xl w-full min-h-screen flex flex-col gap-6">
       <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <label className="block space-y-2">
-          <span className="font-medium text-sm">네이버 플레이스 ID</span>
+          <span className="font-medium text-sm">Naver Place ID</span>
           <input
             value={placeInput}
             onChange={(event) => setPlaceInput(event.target.value)}
@@ -184,7 +184,7 @@ export default function Page() {
         </label>
 
         <label className="block w-40 space-y-2">
-          <span className="font-medium text-sm">최대 리뷰 수</span>
+          <span className="font-medium text-sm">Max reviews length</span>
           <input
             type="number"
             min={1}
@@ -247,7 +247,7 @@ export default function Page() {
       <section className="space-y-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <div className="space-y-1">
           <h2 className="font-semibold text-lg">
-            추출 결과 {reviews.length > 0 ? `(${reviews.length}개)` : ''}
+            Result {reviews.length > 0 ? `(${reviews.length}개)` : ''}
           </h2>
           {result ? (
             <p className="text-muted-foreground text-xs leading-5">
