@@ -1,5 +1,5 @@
 export const MIN_REVIEW_LIMIT = 1;
-export const DEFAULT_MAX_REVIEWS = 500;
+export const DEFAULT_MAX_REVIEWS = 100;
 export const MAX_REVIEW_LIMIT = 500;
 
 export function normalizeMaxReviews(value?: number): number {

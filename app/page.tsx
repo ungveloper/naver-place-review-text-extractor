@@ -33,7 +33,7 @@ type ReviewStreamEvent =
   | { type: 'error'; message: string };
 
 export default function Page() {
-  const [placeInput, setPlaceInput] = useState('2070415865');
+  const [placeInput, setPlaceInput] = useState('');
   const [maxReviews, setMaxReviews] = useState(DEFAULT_MAX_REVIEWS);
   const [result, setResult] = useState<ReviewApiResult | null>(null);
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
@@ -172,29 +172,13 @@ export default function Page() {
 
   return (
     <main className="mx-auto px-6 py-10 max-w-3xl w-full min-h-screen flex flex-col gap-6">
-      <div className="space-y-2">
-        <h1 className="font-bold text-2xl">
-          네이버 플레이스 방문자 리뷰 수집기
-        </h1>
-        <p className="text-muted-foreground text-sm leading-6">
-          네이버 모바일 플레이스 리뷰 URL 또는 숫자 ID만 입력하면 Playwright가
-          모바일 리뷰 페이지에 접속해
-          <code className="mx-1 rounded bg-muted px-1 py-0.5">
-            div.place_section_content
-          </code>
-          영역의 방문자 텍스트 리뷰를 최대 {MAX_REVIEW_LIMIT}개까지 수집합니다.
-        </p>
-      </div>
-
       <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <label className="block space-y-2">
-          <span className="font-medium text-sm">
-            네이버 플레이스 ID 또는 리뷰 URL
-          </span>
+          <span className="font-medium text-sm">네이버 플레이스 ID</span>
           <input
             value={placeInput}
             onChange={(event) => setPlaceInput(event.target.value)}
-            placeholder="2070415865 또는 https://m.place.naver.com/restaurant/2070415865/review/visitor"
+            placeholder="네이버 플레이스 ID를 입력해주세요."
             className="w-full rounded-2xl border border-transparent bg-white px-3 py-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/30"
           />
         </label>
@@ -214,10 +198,15 @@ export default function Page() {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={handleExtract}
-            className="w-fit"
+            className="w-fit min-w-32"
             disabled={isLoading}
+            aria-label={isLoading ? '리뷰 수집 중' : '리뷰 수집하기'}
           >
-            {isLoading ? '수집 중...' : '리뷰 수집하기'}
+            {isLoading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              '리뷰 수집하기'
+            )}
           </Button>
 
           <Button

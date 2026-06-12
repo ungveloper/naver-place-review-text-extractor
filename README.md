@@ -19,8 +19,6 @@ npm run dev
 예시:
 
 ```txt
-2070415865
-13350806
 https://m.place.naver.com/place/2070415865/review/visitor
 https://m.place.naver.com/restaurant/2070415865/review/visitor
 https://m.place.naver.com/hospital/13350806/review/visitor
