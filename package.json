@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "playwright:install": "playwright install chromium"
+    "playwright:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
