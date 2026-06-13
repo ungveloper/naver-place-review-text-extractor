@@ -237,7 +237,10 @@ async function launchBrowser(): Promise<Browser> {
     });
   }
 
-  const { chromium } = await import('playwright');
+  const localPlaywrightPackageName = 'playwright';
+  const { chromium } = (await import(
+    localPlaywrightPackageName
+  )) as typeof import('playwright');
 
   return chromium.launch({
     headless: true,
