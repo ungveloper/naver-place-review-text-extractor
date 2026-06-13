@@ -81,15 +81,15 @@ export default function Page() {
         if (contentType.includes('application/json')) {
           const data = await response.json().catch(() => null);
           throw new Error(
-            data?.message || `리뷰 수집에 실패했습니다. (${response.status})`,
+            data?.message || `Failed to collect reviews. (${response.status})`,
           );
         }
 
         const text = await response.text().catch(() => '');
         throw new Error(
           text
-            ? `리뷰 수집에 실패했습니다. (${response.status}) ${text.slice(0, 500)}`
-            : `리뷰 수집에 실패했습니다. (${response.status})`,
+            ? `Failed to collect reviews. (${response.status}) ${text.slice(0, 500)}`
+            : `Failed to collect reviews. (${response.status})`,
         );
       }
 
@@ -116,7 +116,7 @@ export default function Page() {
             event = JSON.parse(line) as ReviewStreamEvent;
           } catch {
             throw new Error(
-              `리뷰 수집 응답 파싱에 실패했습니다: ${line.slice(0, 300)}`,
+              `Failed to parse review collection response: ${line.slice(0, 300)}`,
             );
           }
 
@@ -136,20 +136,20 @@ export default function Page() {
           }
 
           if (event.type === 'error') {
-            throw new Error(event.message || '리뷰 수집에 실패했습니다.');
+            throw new Error(event.message || 'Failed to collect reviews.');
           }
         }
       }
 
       if (!finalResult) {
-        throw new Error('리뷰 수집 결과를 받지 못했습니다.');
+        throw new Error('No review collection result was received.');
       }
     } catch (error) {
       console.error(error);
       setResult(null);
       setProgress(null);
       setErrorMessage(
-        error instanceof Error ? error.message : '리뷰 수집에 실패했습니다.',
+        error instanceof Error ? error.message : 'Failed to collect reviews.',
       );
     } finally {
       setIsLoading(false);
@@ -168,7 +168,7 @@ export default function Page() {
       }, 2000);
     } catch (error) {
       console.error(error);
-      alert('복사 중 오류가 발생했습니다.');
+      alert('An error occurred while copying.');
     }
   };
 
@@ -199,7 +199,7 @@ export default function Page() {
           <input
             value={placeInput}
             onChange={(event) => setPlaceInput(event.target.value)}
-            placeholder="네이버 플레이스 ID를 입력해주세요."
+            placeholder="Enter Naver Place ID."
             className="w-full rounded-2xl border border-transparent bg-white px-3 py-3 text-sm outline-none transition focus:border-ring focus:ring-3 focus:ring-ring/30"
           />
         </label>
@@ -221,12 +221,12 @@ export default function Page() {
             onClick={handleExtract}
             className="w-fit min-w-32"
             disabled={isLoading}
-            aria-label={isLoading ? '리뷰 수집 중' : '리뷰 수집하기'}
+            aria-label={isLoading ? 'Collecting reviews' : 'Collect reviews'}
           >
             {isLoading ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
             ) : (
-              '리뷰 수집하기'
+              'Collect reviews'
             )}
           </Button>
 
@@ -236,7 +236,7 @@ export default function Page() {
             className="w-fit"
             disabled={reviews.length === 0 || isLoading}
           >
-            {copied ? '복사 완료!' : '결과 복사하기'}
+            {copied ? 'Copied!' : 'Copy result'}
           </Button>
 
           <Button
@@ -245,16 +245,16 @@ export default function Page() {
             className="w-fit"
             disabled={reviews.length === 0 || isLoading}
           >
-            txt 파일로 내보내기
+            Export as txt
           </Button>
         </div>
 
         {progress ? (
           <p className="text-muted-foreground text-sm leading-6">
-            총 {progress.totalReviewCount}개 중 현재{' '}
-            {progress.collectedReviewCount}개 수집
-            {isLoading ? ' 중' : ' 완료'} · 로드된 리뷰 아이템{' '}
-            {progress.loadedReviewItemCount}개
+            Collected {progress.collectedReviewCount} of{' '}
+            {progress.totalReviewCount} reviews
+            {isLoading ? ' · Loading' : ' · Complete'} · Loaded review items:{' '}
+            {progress.loadedReviewItemCount}
           </p>
         ) : null}
       </section>
@@ -268,18 +268,18 @@ export default function Page() {
       <section className="space-y-3 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <div className="space-y-1">
           <h2 className="font-semibold text-lg">
-            Result {reviews.length > 0 ? `(${reviews.length}개)` : ''}
+            Result {reviews.length > 0 ? `(${reviews.length})` : ''}
           </h2>
           {result ? (
             <p className="text-muted-foreground text-xs leading-5">
-              요청 ID: {result.placeId} · 총 {result.maxReviews}개 중{' '}
-              {reviews.length}개 수집 · 로드된 리뷰 아이템:{' '}
-              {result.loadedReviewItemCount}개 · 새로고침 시도:{' '}
-              {result.navigationAttempts}회 · 최종 URL: {result.finalUrl}
+              Request ID: {result.placeId} · Collected {reviews.length} of{' '}
+              {result.maxReviews} reviews · Loaded review items:{' '}
+              {result.loadedReviewItemCount} · Refresh attempts:{' '}
+              {result.navigationAttempts} · Final URL: {result.finalUrl}
             </p>
           ) : (
             <p className="text-muted-foreground text-sm">
-              아직 추출된 리뷰가 없습니다.
+              No reviews extracted yet.
             </p>
           )}
         </div>
@@ -287,7 +287,7 @@ export default function Page() {
         <Textarea
           value={outputText}
           readOnly
-          placeholder="수집된 리뷰 텍스트가 여기에 표시됩니다."
+          placeholder="Collected review text will appear here."
           className="min-h-72 whitespace-pre-line bg-white"
         />
       </section>

@@ -60,7 +60,7 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
   const trimmed = placeInput.trim();
 
   if (!trimmed) {
-    throw new Error('네이버 플레이스 ID 또는 리뷰 URL을 입력해 주세요.');
+    throw new Error('Please enter a Naver Place ID or review URL.');
   }
 
   if (/^\d+$/.test(trimmed)) {
@@ -79,14 +79,14 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
     parsedUrl = new URL(trimmed);
   } catch {
     throw new Error(
-      '플레이스 ID는 숫자만, URL은 https://m.place.naver.com/... 형식으로 입력해 주세요.',
+      'Enter only numbers for the Place ID, or enter a URL in the https://m.place.naver.com/... format.',
     );
   }
 
   const placeIdMatch = parsedUrl.pathname.match(/\/(\d+)(?:\/|$)/);
 
   if (!placeIdMatch?.[1]) {
-    throw new Error('입력한 URL에서 네이버 플레이스 ID를 찾지 못했습니다.');
+    throw new Error('Could not find a Naver Place ID in the entered URL.');
   }
 
   const placeId = placeIdMatch[1];
@@ -283,7 +283,7 @@ async function resolveReviewPageUrl(
   }
 
   throw new Error(
-    `네이버 플레이스 리뷰 페이지를 찾지 못했습니다. place, hospital, restaurant 등 후보 URL을 모두 시도했지만 실패했습니다.${
+    `Could not find the Naver Place review page. All candidate URLs, including place, hospital, and restaurant, failed.${
       lastError instanceof Error ? ` (${lastError.message})` : ''
     }`,
   );
@@ -311,7 +311,7 @@ async function gotoReviewPageWithRetry(
         return attempt;
       }
 
-      lastError = new Error('네이버 플레이스가 임시 오류 화면을 반환했습니다.');
+      lastError = new Error('Naver Place returned a temporary error page.');
       await page.waitForTimeout(900 * attempt);
     } catch (error) {
       lastError = error;
@@ -320,7 +320,7 @@ async function gotoReviewPageWithRetry(
   }
 
   throw new Error(
-    `네이버 플레이스 리뷰 페이지를 불러오지 못했습니다. 새로고침을 ${MAX_NAVIGATION_RETRIES}회 시도했지만 실패했습니다.${
+    `Failed to load the Naver Place review page after ${MAX_NAVIGATION_RETRIES} refresh attempts.${
       lastError instanceof Error ? ` (${lastError.message})` : ''
     }`,
   );
@@ -403,12 +403,12 @@ async function waitForReviewSection(page: Page) {
 
       if (isNaverTemporaryLoadError(bodyText)) {
         throw new Error(
-          '네이버 플레이스 오류 화면이 표시되어 리뷰 영역을 찾지 못했습니다.',
+          'Could not find the review section because Naver Place displayed an error page.',
         );
       }
 
       throw new Error(
-        '리뷰 목록 영역(#_review_list 또는 div.place_section_content)을 찾지 못했습니다.',
+        'Could not find the review list area (#_review_list or div.place_section_content).',
       );
     });
 }

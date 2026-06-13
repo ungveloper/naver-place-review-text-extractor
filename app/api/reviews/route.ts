@@ -38,11 +38,11 @@ export async function POST(request: Request) {
         const message =
           error instanceof Error
             ? error.message
-            : '리뷰를 수집하는 중 알 수 없는 오류가 발생했습니다.';
+            : 'An unknown error occurred while collecting reviews.';
 
         send({
           type: 'error',
-          message: `리뷰 수집 실패: ${message}`,
+          message: `Review collection failed: ${message}`,
         });
         controller.close();
       }
