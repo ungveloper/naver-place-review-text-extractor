@@ -33,12 +33,17 @@ export async function POST(request: Request) {
         send({ type: 'done', result });
         controller.close();
       } catch (error) {
+        console.error('[reviews api error]', error);
+
         const message =
           error instanceof Error
             ? error.message
             : '리뷰를 수집하는 중 알 수 없는 오류가 발생했습니다.';
 
-        send({ type: 'error', message });
+        send({
+          type: 'error',
+          message: `리뷰 수집 실패: ${message}`,
+        });
         controller.close();
       }
     },

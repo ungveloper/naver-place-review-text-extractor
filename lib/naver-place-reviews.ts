@@ -1,5 +1,5 @@
 import { normalizeMaxReviews } from '@/lib/review-config';
-import { chromium, type Browser, type Page } from 'playwright';
+import type { Browser, Page } from 'playwright-core';
 
 const NAVER_MOBILE_PLACE_ORIGIN = 'https://m.place.naver.com';
 
@@ -147,15 +147,7 @@ export async function collectNaverPlaceReviews({
   let browser: Browser | undefined;
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-sandbox',
-      ],
-    });
+    browser = await launchBrowser();
 
     const context = await browser.newContext({
       acceptDownloads: false,
@@ -186,11 +178,13 @@ export async function collectNaverPlaceReviews({
       page,
       normalizedInput.candidateUrls,
     );
+
     const reviews = await collectReviewsFromLoadedPage(
       page,
       reviewLimit,
       onProgress,
     );
+
     const loadedReviewItemCount = await getReviewItemCount(page);
 
     onProgress?.({
@@ -213,6 +207,42 @@ export async function collectNaverPlaceReviews({
   } finally {
     await browser?.close();
   }
+}
+
+async function launchBrowser(): Promise<Browser> {
+  const commonArgs = [
+    '--disable-blink-features=AutomationControlled',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-sandbox',
+  ];
+
+  if (process.env.VERCEL === '1') {
+    const [{ chromium }, { default: serverlessChromium }] = await Promise.all([
+      import('playwright-core'),
+      import('@sparticuz/chromium'),
+    ]);
+
+    const executablePath = await serverlessChromium.executablePath();
+
+    console.info('[launchBrowser] running on Vercel', {
+      executablePath,
+      nodeVersion: process.version,
+    });
+
+    return chromium.launch({
+      args: [...serverlessChromium.args, ...commonArgs],
+      executablePath,
+      headless: true,
+    });
+  }
+
+  const { chromium } = await import('playwright');
+
+  return chromium.launch({
+    headless: true,
+    args: commonArgs,
+  });
 }
 
 async function resolveReviewPageUrl(
@@ -241,11 +271,16 @@ async function resolveReviewPageUrl(
       if (navigationAttempts === 0) {
         totalNavigationAttempts += MAX_NAVIGATION_RETRIES;
       }
+
+      console.warn('[resolveReviewPageUrl] candidate failed', {
+        candidateUrl,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   throw new Error(
-    `네이버 플레이스 리뷰 페이지를 찾지 못했습니다. place, restaurant, hospital 등 후보 URL을 모두 시도했지만 실패했습니다.${
+    `네이버 플레이스 리뷰 페이지를 찾지 못했습니다. place, hospital, restaurant 등 후보 URL을 모두 시도했지만 실패했습니다.${
       lastError instanceof Error ? ` (${lastError.message})` : ''
     }`,
   );
@@ -439,12 +474,14 @@ async function expandVisibleTruncatedReviews(page: Page) {
 
 async function scrollReviewPage(page: Page) {
   await page.mouse.wheel(0, 2_800).catch(() => undefined);
+
   await page.evaluate(() => {
     window.scrollBy({
       top: Math.round(window.innerHeight * 1.8),
       behavior: 'instant',
     });
   });
+
   await page.waitForTimeout(800);
 }
 

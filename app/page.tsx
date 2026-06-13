@@ -76,8 +76,21 @@ export default function Page() {
       });
 
       if (!response.ok || !response.body) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || '리뷰 수집에 실패했습니다.');
+        const contentType = response.headers.get('content-type') ?? '';
+
+        if (contentType.includes('application/json')) {
+          const data = await response.json().catch(() => null);
+          throw new Error(
+            data?.message || `리뷰 수집에 실패했습니다. (${response.status})`,
+          );
+        }
+
+        const text = await response.text().catch(() => '');
+        throw new Error(
+          text
+            ? `리뷰 수집에 실패했습니다. (${response.status}) ${text.slice(0, 500)}`
+            : `리뷰 수집에 실패했습니다. (${response.status})`,
+        );
       }
 
       const reader = response.body.getReader();
@@ -97,7 +110,15 @@ export default function Page() {
         for (const line of lines) {
           if (!line.trim()) continue;
 
-          const event = JSON.parse(line) as ReviewStreamEvent;
+          let event: ReviewStreamEvent;
+
+          try {
+            event = JSON.parse(line) as ReviewStreamEvent;
+          } catch {
+            throw new Error(
+              `리뷰 수집 응답 파싱에 실패했습니다: ${line.slice(0, 300)}`,
+            );
+          }
 
           if (event.type === 'progress') {
             setProgress(event.progress);
