@@ -1,5 +1,5 @@
 import { normalizeMaxReviews } from '@/lib/review-config';
-import type { Browser, Page } from 'playwright-core';
+import type { Browser, BrowserContext, Page, Route } from 'playwright-core';
 
 const NAVER_MOBILE_PLACE_ORIGIN = 'https://m.place.naver.com';
 
@@ -15,6 +15,11 @@ const NAVER_PLACE_CANDIDATE_TYPES = [
 
 const MAX_NAVIGATION_RETRIES = 5;
 const MAX_STAGNANT_SCROLLS = 4;
+
+const CLICK_LOAD_MORE_TIMEOUT_MS = 4_000;
+const SCROLL_SETTLE_TIMEOUT_MS = 350;
+const REVIEW_EXPAND_CLICK_DELAY_MS = 50;
+const PAGE_SETTLE_TIMEOUT_MS = 200;
 
 const MOBILE_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
@@ -60,7 +65,7 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
   const trimmed = placeInput.trim();
 
   if (!trimmed) {
-    throw new Error('Please enter a Naver Place ID or review URL.');
+    throw new Error('네이버 플레이스 ID 또는 리뷰 URL을 입력해 주세요.');
   }
 
   if (/^\d+$/.test(trimmed)) {
@@ -79,14 +84,14 @@ export function normalizePlaceInput(placeInput: string): NormalizedPlaceInput {
     parsedUrl = new URL(trimmed);
   } catch {
     throw new Error(
-      'Enter only numbers for the Place ID, or enter a URL in the https://m.place.naver.com/... format.',
+      '플레이스 ID는 숫자만, URL은 https://m.place.naver.com/... 형식으로 입력해 주세요.',
     );
   }
 
   const placeIdMatch = parsedUrl.pathname.match(/\/(\d+)(?:\/|$)/);
 
   if (!placeIdMatch?.[1]) {
-    throw new Error('Could not find a Naver Place ID in the entered URL.');
+    throw new Error('입력한 URL에서 네이버 플레이스 ID를 찾지 못했습니다.');
   }
 
   const placeId = placeIdMatch[1];
@@ -162,6 +167,8 @@ export async function collectNaverPlaceReviews({
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
       },
     });
+
+    await blockUnnecessaryResources(context);
 
     const page = await context.newPage();
     page.setDefaultNavigationTimeout(45_000);
@@ -248,6 +255,19 @@ async function launchBrowser(): Promise<Browser> {
   });
 }
 
+async function blockUnnecessaryResources(context: BrowserContext) {
+  await context.route('**/*', async (route: Route) => {
+    const resourceType = route.request().resourceType();
+
+    if (['image', 'font', 'media'].includes(resourceType)) {
+      await route.abort();
+      return;
+    }
+
+    await route.continue();
+  });
+}
+
 async function resolveReviewPageUrl(
   page: Page,
   candidateUrls: string[],
@@ -283,7 +303,7 @@ async function resolveReviewPageUrl(
   }
 
   throw new Error(
-    `Could not find the Naver Place review page. All candidate URLs, including place, hospital, and restaurant, failed.${
+    `네이버 플레이스 리뷰 페이지를 찾지 못했습니다. place, hospital, restaurant 등 후보 URL을 모두 시도했지만 실패했습니다.${
       lastError instanceof Error ? ` (${lastError.message})` : ''
     }`,
   );
@@ -311,7 +331,7 @@ async function gotoReviewPageWithRetry(
         return attempt;
       }
 
-      lastError = new Error('Naver Place returned a temporary error page.');
+      lastError = new Error('네이버 플레이스가 임시 오류 화면을 반환했습니다.');
       await page.waitForTimeout(900 * attempt);
     } catch (error) {
       lastError = error;
@@ -320,7 +340,7 @@ async function gotoReviewPageWithRetry(
   }
 
   throw new Error(
-    `Failed to load the Naver Place review page after ${MAX_NAVIGATION_RETRIES} refresh attempts.${
+    `네이버 플레이스 리뷰 페이지를 불러오지 못했습니다. 새로고침을 ${MAX_NAVIGATION_RETRIES}회 시도했지만 실패했습니다.${
       lastError instanceof Error ? ` (${lastError.message})` : ''
     }`,
   );
@@ -403,12 +423,12 @@ async function waitForReviewSection(page: Page) {
 
       if (isNaverTemporaryLoadError(bodyText)) {
         throw new Error(
-          'Could not find the review section because Naver Place displayed an error page.',
+          '네이버 플레이스 오류 화면이 표시되어 리뷰 영역을 찾지 못했습니다.',
         );
       }
 
       throw new Error(
-        'Could not find the review list area (#_review_list or div.place_section_content).',
+        '리뷰 목록 영역(#_review_list 또는 div.place_section_content)을 찾지 못했습니다.',
       );
     });
 }
@@ -442,7 +462,7 @@ async function clickLoadMoreReviews(
               '#_review_list > li, ul[id="_review_list"] > li, div.place_section_content li.place_apply_pui',
             ).length > previous,
           beforeItemCount,
-          { timeout: 8_000 },
+          { timeout: CLICK_LOAD_MORE_TIMEOUT_MS },
         )
         .catch(() => undefined);
 
@@ -470,22 +490,22 @@ async function expandVisibleTruncatedReviews(page: Page) {
     if (!isVisible) continue;
 
     await button.scrollIntoViewIfNeeded().catch(() => undefined);
-    await button.click({ timeout: 3_000 }).catch(() => undefined);
-    await page.waitForTimeout(120);
+    await button.click({ timeout: 2_000 }).catch(() => undefined);
+    await page.waitForTimeout(REVIEW_EXPAND_CLICK_DELAY_MS);
   }
 }
 
 async function scrollReviewPage(page: Page) {
-  await page.mouse.wheel(0, 2_800).catch(() => undefined);
+  await page.mouse.wheel(0, 3_600).catch(() => undefined);
 
   await page.evaluate(() => {
     window.scrollBy({
-      top: Math.round(window.innerHeight * 1.8),
+      top: Math.round(window.innerHeight * 2.4),
       behavior: 'instant',
     });
   });
 
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(SCROLL_SETTLE_TIMEOUT_MS);
 }
 
 async function extractReviewTexts(
@@ -565,10 +585,7 @@ async function getReviewItemCount(page: Page): Promise<number> {
 
 async function waitForPageSettled(page: Page) {
   await page.waitForLoadState('domcontentloaded').catch(() => undefined);
-  await page
-    .waitForLoadState('networkidle', { timeout: 10_000 })
-    .catch(() => undefined);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(PAGE_SETTLE_TIMEOUT_MS);
 }
 
 async function getBodyText(page: Page): Promise<string> {
