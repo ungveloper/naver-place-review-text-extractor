@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import { Check, Copy, FileSpreadsheet, FileText, LoaderCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { ReviewPreviewCard } from '@/components/reviews/review-preview-card';
+import { getPreviewSections } from '@/lib/review-preview';
 import { DEFAULT_MAX_REVIEWS, MAX_REVIEW_LIMIT, normalizeMaxReviews } from '@/lib/review-config';
 import type { ReviewDetails } from '@/lib/review-details';
 import {
@@ -68,6 +69,7 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [visibleReviewCount, setVisibleReviewCount] = useState(20);
 
   const reviewDetails = useMemo(() => result?.reviewDetails ?? [], [result]);
   const selectedFields = useMemo(() => REVIEW_FIELDS.filter(({ key }) => selection[key]), [selection]);
@@ -81,6 +83,10 @@ export default function Page() {
     }).length]),
   ) as Record<keyof ReviewFieldSelection, number>, [reviewDetails]);
 
+  const displayableReviews = useMemo(() => reviewDetails.map((review, index) => ({
+    review, number: index + 1, sections: getPreviewSections(review, selectedFields),
+  })).filter(({ sections }) => sections.length > 0), [reviewDetails, selectedFields]);
+  const visibleReviews = displayableReviews.slice(0, visibleReviewCount);
   const sheetData = useMemo(() => buildSelectedReviewSheet(reviewDetails, selection), [reviewDetails, selection]);
   const canExport = selectedFields.length > 0 && sheetData.rows.length > 0;
   const filenameStem = `naver-place-reviews-${(result?.placeId || 'naver-place').replace(/[^\w-]/g, '')}-${new Date().toISOString().slice(0, 10)}`;
@@ -93,6 +99,7 @@ export default function Page() {
     setExportError('');
     setCopied(false);
     setResult(null);
+    setVisibleReviewCount(20);
     setProgress({ collectedReviewCount: 0, totalReviewCount: normalizedMaxReviews, loadedReviewItemCount: 0, phase: 'initializing' });
 
     try {
@@ -190,6 +197,7 @@ export default function Page() {
     setSelection(Object.fromEntries(REVIEW_FIELDS.map(({ key }) => [key, checked])) as ReviewFieldSelection);
     setCopied(false);
     setExportError('');
+    setVisibleReviewCount(20);
   };
 
   // Initial state: the ID input, review limit, and primary CTA are centered.
@@ -273,7 +281,7 @@ export default function Page() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-5 lg:grid-cols-[318px_minmax(0,1fr)]">
-        <section className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="field-heading">
+        <section className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5 lg:sticky lg:top-4 lg:flex lg:h-[calc(100dvh-2rem)] lg:flex-col" aria-labelledby="field-heading">
           <div className="space-y-1">
             <h2 id="field-heading" className="text-base font-semibold">내보낼 정보 선택</h2>
             <p className="text-xs leading-5 text-muted-foreground">{selectedFields.length}개 선택 · 선택 즉시 미리보기에 반영</p>
@@ -282,13 +290,14 @@ export default function Page() {
             <Button size="sm" variant="outline" onClick={() => setAll(true)} className="flex-1">전체 선택</Button>
             <Button size="sm" variant="outline" onClick={() => setAll(false)} className="flex-1">전체 해제</Button>
           </div>
-          <div className="mt-4 max-h-[min(72vh,790px)] space-y-1.5 overflow-y-auto pr-1" role="group" aria-label="내보낼 정보">
+          <div className="mt-4 max-h-[min(72vh,790px)] space-y-1.5 overflow-y-auto pr-1 lg:min-h-0 lg:flex-1 lg:max-h-none" role="group" aria-label="내보낼 정보">
             {REVIEW_FIELDS.map(({ key, label }) => (
               <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2.5 text-sm transition hover:border-border hover:bg-muted/40 has-[:checked]:bg-muted/35">
                 <input type="checkbox" checked={selection[key]} onChange={(event) => {
                   setSelection((previous) => ({ ...previous, [key]: event.target.checked }));
                   setCopied(false);
                   setExportError('');
+                  setVisibleReviewCount(20);
                 }} className="size-4 shrink-0 accent-foreground" />
                 <span className="min-w-0 flex-1 break-keep">{label}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title="값을 찾은 리뷰 수">
@@ -300,8 +309,8 @@ export default function Page() {
           <p className="mt-4 border-t pt-3 text-xs leading-5 text-muted-foreground">네이버 화면에서 찾은 값만 출력합니다. 이미지 항목은 파일이 아닌 URL로 제공됩니다.</p>
         </section>
 
-        <section className="min-w-0 space-y-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="preview-heading">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <section className="min-w-0 rounded-2xl border bg-card p-4 shadow-sm sm:p-5" aria-labelledby="preview-heading">
+          <div className="sticky top-0 z-30 -mx-4 -mt-4 mb-5 flex flex-wrap items-start justify-between gap-3 rounded-t-2xl border-b bg-card/95 px-4 py-4 shadow-sm backdrop-blur-md sm:-mx-5 sm:-mt-5 sm:px-5 sm:py-5">
             <div className="space-y-1">
               <h2 id="preview-heading" className="text-base font-semibold">미리보기</h2>
               <p className="text-xs text-muted-foreground">{sheetData.rows.length.toLocaleString()}개 리뷰 · 선택한 {selectedFields.length}개 항목</p>
@@ -321,12 +330,30 @@ export default function Page() {
           </div>
           {exportError && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700" role="alert">{exportError}</p>}
           {!canExport && <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800" role="status">선택한 정보에 값이 없습니다. 왼쪽에서 다른 항목을 선택해 주세요.</p>}
-          <Textarea value={outputText} readOnly aria-label="선택한 리뷰 정보 미리보기"
-            placeholder="선택한 리뷰 정보가 여기에 표시됩니다."
-            className="min-h-[55vh] w-full resize-y whitespace-pre-wrap bg-background font-mono text-sm leading-6 lg:min-h-[calc(100vh-235px)]" />
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>TXT는 미리보기와 동일한 내용, Excel은 선택한 항목별 열로 저장됩니다.</span>
-            <span>{result.loadedReviewItemCount.toLocaleString()}개 카드 확인</span>
+          <div className="space-y-4" role="list" aria-label="수집한 리뷰 카드 미리보기">
+            {visibleReviews.map(({ review, number, sections }) => (
+              <div key={`${result.placeId}-${number}`} role="listitem">
+                <ReviewPreviewCard
+                  review={review} number={number} sections={sections}
+                  showAuthor={selection.authorName} showAvatar={selection.profileImageUrl}
+                  showDate={selection.writtenAt}
+                />
+              </div>
+            ))}
+            {displayableReviews.length > visibleReviewCount && (
+              <div className="flex flex-col items-center gap-2 py-4">
+                <p className="text-xs text-muted-foreground">
+                  {visibleReviews.length.toLocaleString()} / {displayableReviews.length.toLocaleString()}개 리뷰 표시 중
+                </p>
+                <Button variant="outline" onClick={() => setVisibleReviewCount((count) => count + 20)}>
+                  리뷰 20개 더 보기
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-xs text-muted-foreground">
+            <span>미리보기는 리뷰 카드 형태로 표시됩니다. 텍스트 복사와 TXT 다운로드의 기존 형식, Excel 열 구조는 유지됩니다.</span>
+            <span>불러온 카드 {result.loadedReviewItemCount.toLocaleString()}개</span>
           </div>
         </section>
       </div>
