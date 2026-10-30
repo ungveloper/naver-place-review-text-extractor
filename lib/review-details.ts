@@ -117,14 +117,23 @@ export async function extractReviewDetails(
         'a[data-pui-click-code*="profile"]',
         '.pui__NMi-D a',
       ]);
+      // In Naver's visitor-review markup the nickname is nested inside the
+      // textual profile link: a[data-pui-click-code="profile"] .pui__NMi-Dp.
+      // Never fall back to the whole profile link: the avatar link is empty
+      // and the textual link also contains unrelated review/photo counts.
       const nameElement = first(card, [
+        'a[data-pui-click-code="profile"] .pui__NMi-Dp',
+        'a[data-pui-click-code="profile"] [class*="pui__NMi-D"]',
+        '.pui__uslU0d .pui__NMi-Dp',
+        '.pui__NMi-Dp',
         '.pui__NMi-D',
+        'a[data-pui-click-code="profile"] .pui__uslU0d',
+        'a[data-pui-click-code="profile"] .pui__JiVbY3',
+        'a[data-pui-click-code="profile"] [class*="nickname"]',
+        'a[data-pui-click-code="profile"] [class*="Nickname"]',
         '.pui__J0lZf',
-        '[class*="nickname"]',
-        '[class*="Nickname"]',
-        '[data-pui-click-code*="profile"]',
       ]);
-      const authorName = textOf(nameElement) || textOf(profileLink) || null;
+      const authorName = textOf(nameElement) || null;
       const avatarElement = first(card, [
         '[class*="profileImage"]',
         '[class*="ProfileImage"]',
@@ -158,9 +167,11 @@ export async function extractReviewDetails(
       const cardText = clean(card.textContent);
       const visitCount = cardText.match(/(?:\d+\s*번째\s*방문|방문\s*\d+\s*회)/)?.[0] || null;
       const authorBlock = first(card, [
+        'a[data-pui-click-code="profile"] .pui__RuLAax',
+        '.pui__RuLAax',
         '[class*="profile"]', '[class*="Profile"]', '.pui__NMi-D',
       ]);
-      const reviewerReviewCount = textOf(authorBlock).match(/(?:리뷰|후기)\s*\d+\s*(?:개|건)?/)?.[0] || null;
+      const reviewerReviewCount = textOf(authorBlock).match(/(?:리뷰|후기)\s*\d+\s*(?:개|건)?/)?.[0]?.trim() || null;
 
       const ratingText = Array.from(card.querySelectorAll('[aria-label*="별점"], [aria-label*="평점"], [title*="별점"], [class*="rating"], [class*="Rating"]'))
         .map((node) => node.getAttribute('aria-label') || node.getAttribute('title') || textOf(node))
