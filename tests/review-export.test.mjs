@@ -21,9 +21,9 @@ const review = {
   ownerReply: null,
 };
 
-test('defaults to the same text-only format as before', () => {
+test('text-only export includes the review content label and a dash', () => {
   assert.equal(formatReviewExport([review], initialReviewFields()),
-    '1.\n친절했어요.\n좋습니다!');
+    '1.\n- 리뷰 내용: 친절했어요.\n좋습니다!');
 });
 
 test('selected metadata appears with labels; missing values are omitted', () => {
@@ -33,9 +33,9 @@ test('selected metadata appears with labels; missing values are omitted', () => 
   fields.visitedAt = true;
   fields.keywords = true;
   const output = formatReviewExport([review], fields);
-  assert.match(output, /작성자 이름\(닉네임\): 테스트닉네임/);
-  assert.match(output, /작성 날짜: 2026\.10\.29\./);
-  assert.match(output, /리뷰 키워드: 친절해요, 분위기가 좋아요/);
+  assert.match(output, /- 작성자 이름\(닉네임\): 테스트닉네임/);
+  assert.match(output, /- 작성 날짜: 2026\.10\.29\./);
+  assert.match(output, /- 리뷰 키워드: 친절해요, 분위기가 좋아요/);
   assert.doesNotMatch(output, /방문 날짜:/);
 });
 
@@ -45,7 +45,7 @@ test('unchecking review text removes the review text', () => {
   fields.profileUrl = true;
   const output = formatReviewExport([review], fields);
   assert.doesNotMatch(output, /친절했어요/);
-  assert.match(output, /프로필 링크: https:\/\/myplace.naver.com\/example/);
+  assert.match(output, /- 프로필 링크: https:\/\/myplace.naver.com\/example/);
 });
 
 test('all unselected, empty reviews, and all-missing values yield empty output', () => {
@@ -61,5 +61,17 @@ test('multi-review numbering skips reviews that have no chosen value', () => {
   fields.text = false;
   fields.rating = true;
   const output = formatReviewExport([{ ...review, rating: null }, review], fields);
-  assert.equal(output, '2.\n별점: 5');
+  assert.equal(output, '2.\n- 별점: 5');
+});
+
+
+test('every available section starts with - while keeping review numbering and line breaks', () => {
+  const fields = initialReviewFields();
+  fields.authorName = true;
+  fields.profileUrl = true;
+  fields.writtenAt = true;
+  const output = formatReviewExport([review, { ...review, authorName: '둘째' }], fields);
+  assert.match(output, /^1\.\n- 리뷰 내용: 친절했어요\.\n좋습니다!\n- 작성자 이름\(닉네임\): 테스트닉네임\n- 프로필 링크: https:\/\/myplace\.naver\.com\/example\n- 작성 날짜: 2026\.10\.29\./);
+  assert.match(output, /\n\n2\.\n- 리뷰 내용: /);
+  assert.match(output, /- 작성자 이름\(닉네임\): 둘째/);
 });

@@ -40,7 +40,8 @@ export function formatReviewExport(
       const raw = review[key];
       const value = Array.isArray(raw) ? raw.filter(Boolean).join(', ') : raw;
       if (!value) return [];
-      return [selected.length === 1 && key === 'text' ? value : `${label}: ${value}`];
+      // Every selected section has an explicit bullet, including text-only export.
+      return [`- ${label}: ${value}`];
     });
     return lines.length ? `${index + 1}.\n${lines.join('\n')}` : '';
   }).filter(Boolean).join('\n\n');

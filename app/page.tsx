@@ -59,7 +59,8 @@ function saveBlob(blob: Blob, filename: string) {
 
 export default function Page() {
   const [placeInput, setPlaceInput] = useState('');
-  const [maxReviews, setMaxReviews] = useState(DEFAULT_MAX_REVIEWS);
+  // Keep the input as a string so the user can clear and type a new number.
+  const [maxReviews, setMaxReviews] = useState(String(DEFAULT_MAX_REVIEWS));
   const [selection, setSelection] = useState<ReviewFieldSelection>(initialReviewFields);
   const [result, setResult] = useState<ReviewApiResult | null>(null);
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
@@ -70,6 +71,8 @@ export default function Page() {
 
   const reviewDetails = useMemo(() => result?.reviewDetails ?? [], [result]);
   const selectedFields = useMemo(() => REVIEW_FIELDS.filter(({ key }) => selection[key]), [selection]);
+  const requestedCount = Number(maxReviews);
+  const isValidReviewCount = /^\d+$/.test(maxReviews) && Number.isSafeInteger(requestedCount) && requestedCount >= 1 && requestedCount <= MAX_REVIEW_LIMIT;
   const outputText = useMemo(() => formatReviewExport(reviewDetails, selection), [reviewDetails, selection]);
   const availableCounts = useMemo(() => Object.fromEntries(
     REVIEW_FIELDS.map(({ key }) => [key, reviewDetails.filter((review) => {
@@ -83,8 +86,8 @@ export default function Page() {
   const filenameStem = `naver-place-reviews-${(result?.placeId || 'naver-place').replace(/[^\w-]/g, '')}-${new Date().toISOString().slice(0, 10)}`;
 
   const handleExtract = async () => {
-    if (isLoading || !placeInput.trim()) return;
-    const normalizedMaxReviews = normalizeMaxReviews(maxReviews);
+    if (isLoading || !placeInput.trim() || !isValidReviewCount) return;
+    const normalizedMaxReviews = normalizeMaxReviews(requestedCount);
     setIsLoading(true);
     setErrorMessage('');
     setExportError('');
@@ -189,7 +192,7 @@ export default function Page() {
     setExportError('');
   };
 
-  // Initial state: only the ID input and primary CTA are shown in the center.
+  // Initial state: the ID input, review limit, and primary CTA are centered.
   // During collection, this central area is replaced by a spinner + progress.
   if (isLoading || !result) {
     const progressRatio = progress ? Math.min(100, Math.floor(progress.collectedReviewCount / Math.max(1, progress.totalReviewCount) * 100)) : 0;
@@ -223,11 +226,23 @@ export default function Page() {
               </div>
             ) : (
               <form onSubmit={(event) => { event.preventDefault(); void handleExtract(); }} className="space-y-4">
-                <label htmlFor="place-id" className="block text-sm font-semibold">네이버 플레이스 ID 또는 리뷰 URL</label>
-                <input id="place-id" value={placeInput} onChange={(event) => setPlaceInput(event.target.value)}
-                  placeholder="플레이스 ID 또는 리뷰 URL을 입력하세요" autoFocus
-                  className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20" />
-                <Button type="submit" className="h-11 w-full" disabled={!placeInput.trim()}>리뷰 수집하기</Button>
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px] sm:items-end">
+                  <label htmlFor="place-id" className="block space-y-2">
+                    <span className="block text-sm font-semibold">네이버 플레이스 ID 또는 리뷰 URL</span>
+                    <input id="place-id" value={placeInput} onChange={(event) => setPlaceInput(event.target.value)}
+                      placeholder="플레이스 ID 또는 리뷰 URL을 입력하세요" autoFocus required
+                      className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20" />
+                  </label>
+                  <label htmlFor="max-reviews" className="block space-y-2">
+                    <span className="block text-sm font-semibold">수집할 리뷰 수</span>
+                    <input id="max-reviews" type="number" inputMode="numeric" min={1} max={MAX_REVIEW_LIMIT} step={1} required
+                      value={maxReviews} onChange={(event) => setMaxReviews(event.target.value)}
+                      aria-describedby="review-count-help" aria-invalid={!isValidReviewCount}
+                      className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20" />
+                  </label>
+                </div>
+                <p id="review-count-help" className="text-xs text-muted-foreground">리뷰는 1~{MAX_REVIEW_LIMIT}개 사이에서 직접 지정할 수 있습니다. (기본 {DEFAULT_MAX_REVIEWS}개)</p>
+                <Button type="submit" className="h-11 w-full" disabled={!placeInput.trim() || !isValidReviewCount}>리뷰 수집하기</Button>
               </form>
             )}
           </section>
@@ -247,8 +262,8 @@ export default function Page() {
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             수집 개수
-            <input aria-label="다음 수집 시 최대 리뷰 수" type="number" min={1} max={MAX_REVIEW_LIMIT} value={maxReviews}
-              onChange={(event) => setMaxReviews(Number(event.target.value))}
+            <input aria-label="다음 수집 시 최대 리뷰 수" type="number" inputMode="numeric" min={1} max={MAX_REVIEW_LIMIT} step={1} value={maxReviews}
+              onChange={(event) => setMaxReviews(event.target.value)}
               className="h-9 w-20 rounded-lg border bg-background px-2 text-sm text-foreground" />
           </label>
           <Button size="sm" variant="outline" onClick={() => { setResult(null); setProgress(null); setErrorMessage(''); setExportError(''); }}>
