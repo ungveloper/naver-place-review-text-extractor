@@ -64,15 +64,34 @@ export async function extractReviewDetails(
         return null;
       }
     };
-    const imgOf = (root: Element | null): string | null => {
+    // Naver's *default* avatar is often an inline PNG data URI, not a URL.
+    // Accept that exact image only for profile avatars; keep review media URL-only.
+    const imgOf = (
+      root: Element | null,
+      acceptInlineAvatar = false,
+    ): string | null => {
       const img = root?.matches('img')
         ? (root as HTMLImageElement)
         : root?.querySelector('img');
       if (!img) return null;
-      const raw = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') ||
-        img.getAttribute('src') || img.getAttribute('data-original') ||
-        img.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0];
-      return urlOf(raw);
+      const candidates = [
+        img.getAttribute('data-src'),
+        img.getAttribute('data-lazy-src'),
+        img.getAttribute('data-original'),
+        img.getAttribute('src'),
+        img.getAttribute('srcset')?.split(',')[0]?.trim().split(/\s+/)[0],
+      ];
+      for (const raw of candidates) {
+        if (!raw) continue;
+        const value = raw.trim();
+        const externalUrl = urlOf(value);
+        if (externalUrl) return externalUrl;
+        if (acceptInlineAvatar &&
+            /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/i.test(value)) {
+          return value;
+        }
+      }
+      return null;
     };
     const findReviewBody = (card: Element): string => {
       const selectors = [
@@ -142,7 +161,7 @@ export async function extractReviewDetails(
         'a[href*="/my/"] img',
         'a[href*="/profile/"] img',
       ]);
-      const profileImageUrl = imgOf(avatarElement) || imgOf(profileLink);
+      const profileImageUrl = imgOf(avatarElement, true) || imgOf(profileLink, true);
       const profileUrl = urlOf(profileLink?.getAttribute('href'));
 
       const dateNodes = Array.from(
