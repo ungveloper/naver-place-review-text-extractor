@@ -45,3 +45,22 @@ export function formatReviewExport(
     return lines.length ? `${index + 1}.\n${lines.join('\n')}` : '';
   }).filter(Boolean).join('\n\n');
 }
+
+/** A single source of truth for the Excel table and the live selected-field preview. */
+export function buildSelectedReviewSheet(
+  reviews: ReviewDetails[],
+  selection: ReviewFieldSelection,
+): { headers: string[]; rows: string[][] } {
+  const fields = REVIEW_FIELDS.filter(({ key }) => selection[key]);
+  return {
+    headers: ['번호', ...fields.map(({ label }) => label)],
+    rows: reviews.flatMap((review, index) => {
+      const values = fields.map(({ key }) => {
+        const value = review[key];
+        return Array.isArray(value) ? value.filter(Boolean).join(', ') : value ?? '';
+      });
+      // A missing row must not become a blank line in the workbook.
+      return values.some(Boolean) ? [[String(index + 1), ...values]] : [];
+    }),
+  };
+}
