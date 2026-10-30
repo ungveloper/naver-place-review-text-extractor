@@ -1,4 +1,5 @@
 import { normalizeMaxReviews } from '@/lib/review-config';
+import { extractReviewDetails, type ReviewDetails } from '@/lib/review-details';
 import type { Browser, BrowserContext, Page, Route } from 'playwright-core';
 
 const NAVER_MOBILE_PLACE_ORIGIN = 'https://m.place.naver.com';
@@ -45,6 +46,7 @@ export type ReviewCollectionResult = {
   finalUrl: string;
   maxReviews: number;
   reviews: string[];
+  reviewDetails: ReviewDetails[];
   loadedReviewItemCount: number;
   navigationAttempts: number;
   reachedMax: boolean;
@@ -186,11 +188,13 @@ export async function collectNaverPlaceReviews({
       normalizedInput.candidateUrls,
     );
 
-    const reviews = await collectReviewsFromLoadedPage(
+    const reviewDetails = await collectReviewsFromLoadedPage(
       page,
       reviewLimit,
       onProgress,
     );
+    // Keep the original string[] response for existing API consumers.
+    const reviews = reviewDetails.map(({ text }) => text);
 
     const loadedReviewItemCount = await getReviewItemCount(page);
 
@@ -207,6 +211,7 @@ export async function collectNaverPlaceReviews({
       finalUrl: page.url(),
       maxReviews: reviewLimit,
       reviews,
+      reviewDetails,
       loadedReviewItemCount,
       navigationAttempts: resolvedReviewPage.navigationAttempts,
       reachedMax: reviews.length >= reviewLimit,
@@ -350,10 +355,10 @@ async function collectReviewsFromLoadedPage(
   page: Page,
   maxReviews: number,
   onProgress?: ReviewCollectionOptions['onProgress'],
-): Promise<string[]> {
+): Promise<ReviewDetails[]> {
   await waitForReviewSection(page);
 
-  let reviews = await extractReviewTexts(page, maxReviews);
+  let reviews = await extractReviewDetails(page, maxReviews);
   await reportProgress(page, reviews, maxReviews, onProgress);
 
   let previousCount = reviews.length;
@@ -364,7 +369,7 @@ async function collectReviewsFromLoadedPage(
     stagnantScrolls < MAX_STAGNANT_SCROLLS
   ) {
     await expandVisibleTruncatedReviews(page);
-    reviews = await extractReviewTexts(page, maxReviews);
+    reviews = await extractReviewDetails(page, maxReviews);
     await reportProgress(page, reviews, maxReviews, onProgress);
 
     if (reviews.length >= maxReviews) break;
@@ -379,7 +384,7 @@ async function collectReviewsFromLoadedPage(
     await waitForPageSettled(page);
     await expandVisibleTruncatedReviews(page);
 
-    reviews = await extractReviewTexts(page, maxReviews);
+    reviews = await extractReviewDetails(page, maxReviews);
     await reportProgress(page, reviews, maxReviews, onProgress);
 
     const currentItemCount = await getReviewItemCount(page);
@@ -397,7 +402,7 @@ async function collectReviewsFromLoadedPage(
 
 async function reportProgress(
   page: Page,
-  reviews: string[],
+  reviews: ReviewDetails[],
   maxReviews: number,
   onProgress?: ReviewCollectionOptions['onProgress'],
 ) {
@@ -506,72 +511,6 @@ async function scrollReviewPage(page: Page) {
   });
 
   await page.waitForTimeout(SCROLL_SETTLE_TIMEOUT_MS);
-}
-
-async function extractReviewTexts(
-  page: Page,
-  maxReviews: number,
-): Promise<string[]> {
-  return page.evaluate((limit) => {
-    const reviewItems = Array.from(
-      document.querySelectorAll(
-        '#_review_list > li, ul[id="_review_list"] > li, div.place_section_content li.place_apply_pui',
-      ),
-    );
-
-    const normalize = (value: string) =>
-      value
-        .replace(/\r/g, '')
-        .split('\n')
-        .map((line) => line.replace(/\s+/g, ' ').trim())
-        .filter((line) => line && line !== '더보기')
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/\s*더보기\s*$/g, '')
-        .trim();
-
-    const findReviewTextNode = (item: Element): HTMLElement | null => {
-      const selectors = [
-        '.pui__vn15t2 a[data-pui-click-code="rvshowmore"]',
-        '.pui__vn15t2 a:not(.pui__wFzIYl)',
-        '.pui__vn15t2',
-        '[data-pui-click-code="rvshowmore"]',
-      ];
-
-      for (const selector of selectors) {
-        const node = item.querySelector(selector);
-
-        if (node instanceof HTMLElement) {
-          const text = normalize(node.innerText || node.textContent || '');
-
-          if (text && text !== '더보기') return node;
-        }
-      }
-
-      return null;
-    };
-
-    const unique = new Map<string, string>();
-
-    for (const item of reviewItems) {
-      const reviewNode = findReviewTextNode(item);
-
-      if (!reviewNode) continue;
-
-      const reviewText = normalize(
-        reviewNode.innerText || reviewNode.textContent || '',
-      );
-      const dedupeKey = reviewText.replace(/\s+/g, ' ').trim();
-
-      if (reviewText && dedupeKey && !unique.has(dedupeKey)) {
-        unique.set(dedupeKey, reviewText);
-      }
-
-      if (unique.size >= limit) break;
-    }
-
-    return Array.from(unique.values()).slice(0, limit);
-  }, maxReviews);
 }
 
 async function getReviewItemCount(page: Page): Promise<number> {
