@@ -11,18 +11,17 @@ type Props = {
   number: number;
   sections: PreviewSection[];
   showAuthor: boolean;
-  showAvatar: boolean;
   showDate: boolean;
 };
 
-/** Review-style visual card. Selection controls content; each displayed value copies separately. */
-export function ReviewPreviewCard({ review, number, sections, showAuthor, showAvatar, showDate }: Props) {
+/** Review-style visual card. Avatar always shows when available; selection controls exported fields. */
+export function ReviewPreviewCard({ review, number, sections, showAuthor, showDate }: Props) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyError, setCopyError] = useState('');
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [expandedImageValues, setExpandedImageValues] = useState<string[]>([]);
 
-  const avatarUrl = showAvatar && isSupportedAvatarSource(review.profileImageUrl) && !avatarFailed
+  const avatarUrl = isSupportedAvatarSource(review.profileImageUrl) && !avatarFailed
     ? review.profileImageUrl : null;
   const profileUrl = showAuthor && review.profileUrl && /^https:\/\/m\.place\.naver\.com\/my\//.test(review.profileUrl)
     ? review.profileUrl : null;

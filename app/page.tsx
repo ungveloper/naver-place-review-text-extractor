@@ -335,7 +335,7 @@ export default function Page() {
               <div key={`${result.placeId}-${number}`} role="listitem">
                 <ReviewPreviewCard
                   review={review} number={number} sections={sections}
-                  showAuthor={selection.authorName} showAvatar={selection.profileImageUrl}
+                  showAuthor={selection.authorName}
                   showDate={selection.writtenAt}
                 />
               </div>
